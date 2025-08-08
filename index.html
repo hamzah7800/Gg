@@ -1,481 +1,347 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no" />
-<title>Mobile FPS — Capsule Player + Joystick + Embedded 64×64 Images</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>Simple Mobile FPS (single-file)</title>
 <style>
-  html,body{height:100%;margin:0;background:#0b1220;color:#fff;font-family:Inter,system-ui,Segoe UI,Roboto,Arial; -webkit-font-smoothing:antialiased; overflow:hidden;}
+  html,body{height:100%;margin:0;background:#0b1220;color:#fff;font-family:system-ui,Segoe UI,Roboto,Arial;overflow:hidden}
   canvas{display:block}
+  #overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:40;background:linear-gradient(180deg,rgba(0,0,0,0.6),rgba(0,0,0,0.9));text-align:center;padding:20px}
+  .btn{background:#1f8fff;border:0;color:#fff;padding:10px 14px;border-radius:10px;font-weight:700}
   #hud{position:fixed;left:10px;top:10px;z-index:30;display:flex;gap:10px;align-items:center}
-  .icon{width:64px;height:64px;background:#111;border-radius:8px;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 18px rgba(0,0,0,0.45)}
-  .vstack{display:flex;flex-direction:column;gap:6px}
-  #ammoBox,#hpBox{font-weight:700;font-size:14px;color:#fff;text-align:center}
+  .icon{width:64px;height:64px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:#111;box-shadow:0 8px 24px rgba(0,0,0,0.6)}
   #leftJoy{position:fixed;left:14px;bottom:14px;width:140px;height:140px;z-index:25}
-  #fireBtn{position:fixed;right:20px;bottom:22px;width:92px;height:92px;border-radius:50%;z-index:25;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#ff6b6b,#c0392b);box-shadow:0 8px 20px rgba(0,0,0,0.4);font-weight:900}
-  #reloadBtn{position:fixed;right:20px;bottom:122px;width:84px;height:40px;border-radius:8px;z-index:25;background:#222;display:flex;align-items:center;justify-content:center}
-  #overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(0,0,0,0.6),rgba(0,0,0,0.85));z-index:50;padding:20px;text-align:center}
-  button.btn{padding:10px 14px;border-radius:10px;border:0;background:#1f8fff;color:#fff;font-weight:700}
-  #crosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:22;pointer-events:none}
-  #weapons{position:fixed;left:10px;bottom:10px;z-index:26;display:flex;gap:8px}
-  .wepBtn{width:64px;height:64px;border-radius:8px;border:2px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;background:#101318}
-  .wepBtn.active{outline:3px solid rgba(255,200,80,0.14);box-shadow:0 8px 18px rgba(0,0,0,0.6)}
+  #fireBtn{position:fixed;right:20px;bottom:24px;width:92px;height:92px;border-radius:50%;z-index:25;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#ff6b6b,#c0392b);box-shadow:0 8px 20px rgba(0,0,0,0.4);font-weight:900}
+  #crosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:22;pointer-events:none;opacity:0.95}
   #msg{position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:40;background:rgba(0,0,0,0.45);padding:8px 12px;border-radius:999px;font-weight:700}
+  #wepIcon img{width:48px;height:48px}
+  .small{font-size:12px;opacity:0.9}
 </style>
 </head>
 <body>
+
 <div id="overlay">
   <div>
-    <h2>Mobile FPS — Capsule Player</h2>
-    <p style="opacity:.9">Touch left joystick to move, drag right half to look. Tap FIRE to shoot. Weapon icons (64×64) are embedded in the page.</p>
-    <div style="margin-top:12px"><button id="startBtn" class="btn">Start Game</button></div>
+    <h2>Simple Mobile FPS</h2>
+    <p class="small">Left joystick to move • Drag right half to look • FIRE to shoot (hits by raycast). Works when opened directly (no server required).</p>
+    <div style="margin-top:12px"><button id="startBtn" class="btn">Start</button></div>
   </div>
 </div>
 
 <div id="hud">
-  <div class="icon vstack"><div id="hpBox">HP<br><span id="hp">100</span></div></div>
-  <div class="icon vstack"><div id="ammoBox">AMMO<br><span id="ammo">50</span></div></div>
-</div>
-
-<div id="weapons" aria-hidden="true">
-  <!-- weapon buttons with embedded 64x64 SVG data-uri icons -->
-  <div id="w1" class="wepBtn active" data-wep="pistol" title="Pistol">
-    <img width="64" height="64" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect rx='8' ry='8' width='64' height='64' fill='%2310181b'/><g transform='translate(8,8)'><rect x='0' y='22' width='36' height='8' rx='3' fill='%23ffd166'/><rect x='28' y='18' width='10' height='16' rx='2' fill='%2380c0ff'/><rect x='8' y='8' width='28' height='8' rx='3' fill='%23ffffff' opacity='0.12'/></g></svg>">
-  </div>
-  <div id="w2" class="wepBtn" data-wep="shotgun" title="Shotgun">
-    <img width="64" height="64" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect rx='8' ry='8' width='64' height='64' fill='%2310181b'/><g transform='translate(6,10)'><rect x='0' y='26' width='44' height='8' rx='3' fill='%23ff9b71'/><rect x='36' y='14' width='6' height='18' rx='2' fill='%2380c0ff' /><rect x='6' y='4' width='30' height='10' rx='3' fill='%23ffffff' opacity='0.12' /></g></svg>">
-  </div>
-  <div id="w3" class="wepBtn" data-wep="smg" title="SMG">
-    <img width="64" height="64" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect rx='8' ry='8' width='64' height='64' fill='%2310181b'/><g transform='translate(6,10)'><rect x='0' y='24' width='44' height='10' rx='3' fill='%23a6e3a1'/><rect x='32' y='12' width='8' height='14' rx='2' fill='%2380c0ff' opacity='0.9'/></g></svg>">
-  </div>
+  <div class="icon"><div id="hpBox">HP<br><span id="hp">100</span></div></div>
+  <div class="icon" id="wepIcon"><img alt="weapon" title="Pistol" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64'><rect rx='8' ry='8' width='64' height='64' fill='%2310181b'/><g transform='translate(8,8)'><rect x='0' y='20' width='36' height='8' rx='3' fill='%23ffd166'/><rect x='28' y='16' width='10' height='16' rx='2' fill='%2380c0ff'/><rect x='8' y='6' width='28' height='8' rx='3' fill='%23ffffff' opacity='0.12'/></g></svg>"></div>
 </div>
 
 <div id="leftJoy"></div>
 <div id="fireBtn">FIRE</div>
-<div id="reloadBtn">RELOAD</div>
-<div id="crosshair">
-  <svg width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="3" fill="#fff"/><path d="M22 0 L22 8 M22 44 L22 36 M0 22 L8 22 M44 22 L36 22" stroke="#fff" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/></svg>
-</div>
+<div id="crosshair"><svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="2" fill="#fff" opacity="0.95"/><path d="M14 0 L14 6 M14 28 L14 22 M0 14 L6 14 M28 14 L22 14" stroke="#fff" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/></svg></div>
 <div id="msg"></div>
 
-<!-- three.js, nipple.js, Ammo (WASM) -->
+<!-- CDN libs (Three.js + Nipple.js) -->
 <script src="https://unpkg.com/three@0.159.0/build/three.min.js"></script>
 <script src="https://unpkg.com/nipplejs@0.9.0/dist/nipplejs.min.js"></script>
-<script src="https://unpkg.com/ammo.js@0.0.10/builds/ammo.wasm.js"></script>
 
 <script>
-/* === Mobile FPS: Capsule player + joystick + embedded 64×64 images ===
-   - Player is a dynamic Ammo capsule rigid body (rotation locked).
-   - Camera follows the capsule.
-   - Joystick (nipple.js) controls movement; touch-right controls look.
-   - Weapon icons are embedded as 64×64 inline SVG data URIs above.
-   - Shoots physics bullets; boxes are destructible.
+/* Simple single-file FPS (no Ammo) — mobile-first
+   - Player: capsule-like controller using raycasts + manual velocity
+   - Movement: joystick (left) + touch-look (right)
+   - Shooting: raycast from camera; hit spawns simple decals & particles
 */
 
-// Global vars
+// Basic Three setup
 let scene, camera, renderer, clock;
-let physicsWorld, AmmoLib, tmpTrans;
-let rigidBodies = [], dynamicBoxes = [];
-let playerBody = null, playerMesh = null;
-let joystick, moveInput = {x:0,y:0}, lookTouch = {active:false,id:null,startX:0,startY:0};
-let cameraOffset = new THREE.Vector3(0,1.2,0);
-let playerState = {hp:100, ammo:50, weapon:'pistol'};
+let player = { pos: new THREE.Vector3(0,1.6,6), vel: new THREE.Vector3(), speed: 4.6, onGround: false, hp: 100 };
+let moveInput = { x:0, y:0 }; // joystick input
+let lookTouch = { active:false, id:null, startX:0, startY:0 };
+let bullets = []; // simple lifecycle for particles
+let objects = []; // target boxes
 let lastTime = performance.now();
+let started = false;
 
-// Initialize Ammo and scene
-Ammo().then((A) => {
-  AmmoLib = A;
-  tmpTrans = new AmmoLib.btTransform();
-  init();
-});
-
-function init(){
-  // Three renderer & scene
+// init Three scene
+function initThree(){
   renderer = new THREE.WebGLRenderer({antialias:true});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 1.5));
   renderer.setSize(window.innerWidth, window.innerHeight);
   document.body.appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x88b7ff);
+  scene.background = new THREE.Color(0x87ceeb);
   camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 200);
-  clock = new THREE.Clock();
+  camera.position.copy(player.pos);
 
-  // Lights
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x444466, 0.8);
-  scene.add(hemi);
-  const dir = new THREE.DirectionalLight(0xffffff, 0.7);
-  dir.position.set(5,10,5); scene.add(dir);
+  // light
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x444466, 0.9); scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff, 0.8); dir.position.set(5,12,5); scene.add(dir);
 
-  // Ammo physics
-  setupPhysics();
+  // ground
+  const gMat = new THREE.MeshStandardMaterial({color:0x3a5b2a});
+  const gGeo = new THREE.BoxGeometry(40,1,40);
+  const ground = new THREE.Mesh(gGeo, gMat); ground.position.set(0,-0.5,0); scene.add(ground);
 
-  // Ground
-  const groundMat = new THREE.MeshStandardMaterial({color:0x556b2f});
-  const groundGeom = new THREE.BoxGeometry(40,1,40);
-  const ground = new THREE.Mesh(groundGeom, groundMat);
-  ground.position.set(0,-0.5,0);
-  scene.add(ground);
-  createRigidBody(ground, 0);
+  // walls
+  makeWall(0,2.5,-20,40,5,1); makeWall(0,2.5,20,40,5,1); makeWall(-20,2.5,0,1,5,40); makeWall(20,2.5,0,1,5,40);
 
-  // Walls
-  makeWall(0,2.5,-20,40,5,1);
-  makeWall(0,2.5,20,40,5,1);
-  makeWall(-20,2.5,0,1,5,40);
-  makeWall(20,2.5,0,1,5,40);
-
-  // Destructible boxes
+  // some target boxes
   for (let i=0;i<12;i++){
     const x = (Math.random()-0.5)*14;
     const z = -2 - Math.random()*12;
-    const box = spawnBox(new THREE.Vector3(x,1.2,z), new THREE.Vector3(1,1.2,1));
-    dynamicBoxes.push(box);
+    spawnBox(new THREE.Vector3(x,1.2,z));
   }
-
-  // Player capsule visual (tiny visible helper)
-  const pMat = new THREE.MeshStandardMaterial({color:0xffcc66});
-  const pGeo = new THREE.CapsuleGeometry(0.35, 0.9, 6, 12);
-  playerMesh = new THREE.Mesh(pGeo, pMat);
-  playerMesh.visible = false;
-  scene.add(playerMesh);
-
-  // create physics capsule player
-  createPlayerCapsule(new THREE.Vector3(0,1.6,6));
-
-  // HUD update
-  updateHUD();
-
-  // Joystick
-  const leftZone = document.getElementById('leftJoy');
-  joystick = nipplejs.create({zone:leftZone, mode:'static', position:{left:'70px', top:'70px'}, color:'#ffffff88', size:120});
-  joystick.on('move', (evt, data) => {
-    const force = data.force || 0; const ang = data.angle ? data.angle.radian : 0;
-    moveInput.x = Math.cos(ang)*force; moveInput.y = Math.sin(ang)*force;
-  });
-  joystick.on('end', ()=>{ moveInput.x=0; moveInput.y=0; });
-
-  // Touch look on right half
-  renderer.domElement.addEventListener('touchstart', onTouchStart, {passive:false});
-  renderer.domElement.addEventListener('touchmove', onTouchMove, {passive:false});
-  renderer.domElement.addEventListener('touchend', onTouchEnd, {passive:false});
-
-  // Weapon selection buttons
-  document.querySelectorAll('.wepBtn').forEach(el=>{
-    el.addEventListener('click', ()=> {
-      document.querySelectorAll('.wepBtn').forEach(b=>b.classList.remove('active'));
-      el.classList.add('active');
-      playerState.weapon = el.dataset.wep;
-    });
-  });
-
-  // Fire & reload buttons
-  document.getElementById('fireBtn').addEventListener('touchstart', (e)=>{ e.preventDefault(); fireWeapon(); }, {passive:false});
-  document.getElementById('fireBtn').addEventListener('click', fireWeapon);
-  document.getElementById('reloadBtn').addEventListener('click', reloadWeapon);
-
-  // Start button
-  document.getElementById('startBtn').addEventListener('click', ()=>{ document.getElementById('overlay').style.display='none'; });
-
-  // Resize handler
-  window.addEventListener('resize', onWindowResize);
-
-  // start loop
-  requestAnimationFrame(loop);
 }
 
-/* --- Physics setup --- */
-function setupPhysics(){
-  const A = AmmoLib;
-  const collisionConfig = new A.btDefaultCollisionConfiguration();
-  const dispatcher = new A.btCollisionDispatcher(collisionConfig);
-  const broadphase = new A.btDbvtBroadphase();
-  const solver = new A.btSequentialImpulseConstraintSolver();
-  physicsWorld = new A.btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionConfig);
-  physicsWorld.setGravity(new A.btVector3(0, -9.82, 0));
-}
-
-/* --- Create rigid body helper --- */
-function createRigidBody(mesh, mass){
-  mesh.updateMatrixWorld();
-  const bbox = new THREE.Box3().setFromObject(mesh);
-  const size = new THREE.Vector3(); bbox.getSize(size);
-  const A = AmmoLib;
-  const shape = new A.btBoxShape(new A.btVector3(size.x*0.5, size.y*0.5, size.z*0.5));
-  shape.setMargin(0.05);
-  const transform = new A.btTransform(); transform.setIdentity();
-  const pos = mesh.position;
-  transform.setOrigin(new A.btVector3(pos.x, pos.y, pos.z));
-  const quat = mesh.quaternion;
-  transform.setRotation(new A.btQuaternion(quat.x, quat.y, quat.z, quat.w));
-  const motionState = new A.btDefaultMotionState(transform);
-  const localInertia = new A.btVector3(0,0,0);
-  if (mass > 0) shape.calculateLocalInertia(mass, localInertia);
-  const rbInfo = new A.btRigidBodyConstructionInfo(mass, motionState, shape, localInertia);
-  const body = new A.btRigidBody(rbInfo);
-  physicsWorld.addRigidBody(body);
-  mesh.userData.physicsBody = body;
-  if (mass > 0) rigidBodies.push(mesh);
-  return body;
-}
-
-/* --- Player capsule (dynamic) --- */
-function createPlayerCapsule(pos){
-  const A = AmmoLib;
-  // visual player mesh position
-  playerMesh.position.copy(pos);
-  // Ammo capsule: radius, height (note: btCapsuleShape height is between centers -> use half-height)
-  const radius = 0.35;
-  const height = 0.9; // total cylinder height
-  const mass = 78 / 2; // tuned mass
-  const shape = new A.btCapsuleShape(radius, height);
-  const transform = new A.btTransform(); transform.setIdentity();
-  transform.setOrigin(new A.btVector3(pos.x, pos.y, pos.z));
-  const motionState = new A.btDefaultMotionState(transform);
-  const localInertia = new A.btVector3(0,0,0);
-  shape.calculateLocalInertia(mass, localInertia);
-  const rbInfo = new A.btRigidBodyConstructionInfo(mass, motionState, shape, localInertia);
-  const body = new A.btRigidBody(rbInfo);
-  body.setFriction(0.6);
-  // prevent player from tipping over
-  body.setAngularFactor(new A.btVector3(0,0,0));
-  body.setActivationState(4); // disable Deactivation to keep responsive
-  physicsWorld.addRigidBody(body);
-  playerBody = body;
-  // keep a three mesh placeholder referenced
-  playerMesh.userData.physicsBody = body;
-  rigidBodies.push(playerMesh);
-}
-
-/* --- Spawn a box (destructible) --- */
-function spawnBox(pos, size){
-  const geo = new THREE.BoxGeometry(size.x, size.y, size.z);
-  const mat = new THREE.MeshStandardMaterial({color:0x8fb3ff});
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.copy(pos);
-  scene.add(mesh);
-  const body = createRigidBody(mesh, 2.2);
-  mesh.userData.hp = 30 + Math.floor(Math.random()*50);
-  return mesh;
-}
-
-/* --- Make wall --- */
+// make simple wall (static)
 function makeWall(x,y,z,w,h,d){
   const geo = new THREE.BoxGeometry(w,h,d);
   const mat = new THREE.MeshStandardMaterial({color:0x6f6f6f});
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.set(x,y,z); scene.add(mesh);
-  createRigidBody(mesh, 0);
+  const m = new THREE.Mesh(geo, mat); m.position.set(x,y,z); scene.add(m); objects.push(m);
 }
 
-/* --- Fire weapon (creates physics bullet) --- */
-function fireWeapon(){
-  if (playerState.ammo <= 0){ showMsg('No ammo — reload'); return; }
-  playerState.ammo--; updateHUD();
-  // spawn bullet at camera
-  const camPos = camera.getWorldPosition(new THREE.Vector3());
-  const forward = new THREE.Vector3(); camera.getWorldDirection(forward);
-  const spawn = camPos.clone().add(forward.clone().multiplyScalar(0.6));
-  const bulletGeo = new THREE.SphereGeometry(0.07,8,8);
-  const bulletMat = new THREE.MeshStandardMaterial({color:0xffdd66});
-  const bullet = new THREE.Mesh(bulletGeo, bulletMat);
-  bullet.position.copy(spawn);
-  scene.add(bullet);
-  // Ammo body
-  const A = AmmoLib;
-  const mass = 0.25;
-  const transform = new A.btTransform(); transform.setIdentity();
-  transform.setOrigin(new A.btVector3(spawn.x, spawn.y, spawn.z));
-  const motionState = new A.btDefaultMotionState(transform);
-  const shape = new A.btSphereShape(0.07);
-  shape.setMargin(0.01);
-  const localInertia = new A.btVector3(0,0,0);
-  shape.calculateLocalInertia(mass, localInertia);
-  const rbInfo = new A.btRigidBodyConstructionInfo(mass, motionState, shape, localInertia);
-  const body = new A.btRigidBody(rbInfo);
-  body.setFriction(0.2);
-  physicsWorld.addRigidBody(body);
-  bullet.userData.physicsBody = body;
-  rigidBodies.push(bullet);
-  // velocity
-  const speed = (playerState.weapon === 'shotgun') ? 20 : (playerState.weapon === 'smg' ? 28 : 34);
-  const vel = forward.clone().multiplyScalar(speed);
-  body.setLinearVelocity(new A.btVector3(vel.x, vel.y, vel.z));
-  // life timer
-  setTimeout(()=>{ removeRigidBody(bullet); }, 4500);
+// spawn a static-ish box (we'll not simulate physics, just allow hits)
+function spawnBox(pos){
+  const geo = new THREE.BoxGeometry(1.0,1.2,1.0);
+  const mat = new THREE.MeshStandardMaterial({color:0x8fb3ff});
+  const m = new THREE.Mesh(geo, mat); m.position.copy(pos); scene.add(m);
+  m.userData.hp = 25 + Math.floor(Math.random()*45);
+  objects.push(m);
+  return m;
 }
 
-/* --- Reload --- */
-function reloadWeapon(){ playerState.ammo = 50; updateHUD(); showMsg('Reloaded'); }
+// joystick (Nipple.js)
+const leftZone = document.getElementById('leftJoy');
+const joystick = nipplejs.create({zone:leftZone, mode:'static', position:{left:'70px', top:'70px'}, color:'#ffffff88', size:120});
+joystick.on('move', (evt, data)=>{ const f = data.force||0, a = data.angle?data.angle.radian:0; moveInput.x = Math.cos(a)*f; moveInput.y = Math.sin(a)*f; });
+joystick.on('end', ()=>{ moveInput.x = 0; moveInput.y = 0; });
 
-/* --- Remove rigid body helper --- */
-function removeRigidBody(obj){
-  if (!obj || !obj.userData.physicsBody) return;
-  try{ physicsWorld.removeRigidBody(obj.userData.physicsBody); } catch(e){}
-  scene.remove(obj);
-  const idx = rigidBodies.indexOf(obj);
-  if (idx !== -1) rigidBodies.splice(idx,1);
-}
-
-/* --- Touch look handlers (right half) --- */
-function onTouchStart(evt){
-  for (let t of evt.changedTouches){
+// touch look (right half)
+renderer && renderer.domElement && renderer.domElement.addEventListener('touchstart',onTouchStart,{passive:false});
+function onTouchStart(e){
+  // assign look touch if right half touched
+  for (let t of e.changedTouches){
     if (t.clientX > window.innerWidth * 0.5 && !lookTouch.active){
-      lookTouch.active = true; lookTouch.id = t.identifier;
-      lookTouch.startX = t.clientX; lookTouch.startY = t.clientY;
+      lookTouch.active = true; lookTouch.id = t.identifier; lookTouch.startX = t.clientX; lookTouch.startY = t.clientY;
     }
   }
 }
-function onTouchMove(evt){
-  for (let t of evt.changedTouches){
+function onTouchMove(e){
+  for (let t of e.changedTouches){
     if (lookTouch.active && t.identifier === lookTouch.id){
-      const dx = t.clientX - lookTouch.startX;
-      const dy = t.clientY - lookTouch.startY;
-      // sensitivity tuned for mobile
+      const dx = t.clientX - lookTouch.startX; const dy = t.clientY - lookTouch.startY;
       camera.rotation.order = 'YXZ';
-      camera.rotation.y -= dx * 0.0026;
-      camera.rotation.x -= dy * 0.0026;
+      camera.rotation.y -= dx * 0.0028; camera.rotation.x -= dy * 0.0028;
       camera.rotation.x = Math.max(-Math.PI/2+0.05, Math.min(Math.PI/2-0.05, camera.rotation.x));
       lookTouch.startX = t.clientX; lookTouch.startY = t.clientY;
     }
   }
 }
-function onTouchEnd(evt){
-  for (let t of evt.changedTouches){
-    if (lookTouch.active && t.identifier === lookTouch.id){
-      lookTouch.active = false; lookTouch.id = null;
+function onTouchEnd(e){
+  for (let t of e.changedTouches){
+    if (lookTouch.active && t.identifier === lookTouch.id){ lookTouch.active=false; lookTouch.id=null; }
+  }
+}
+window.addEventListener('touchmove', onTouchMove, {passive:false});
+window.addEventListener('touchend', onTouchEnd, {passive:false});
+
+// desktop mouse look + pointer lock
+renderer && renderer.domElement && renderer.domElement.addEventListener('click', ()=>{ if (!isMobile()) requestPointerLock(); });
+function requestPointerLock(){ try{ renderer.domElement.requestPointerLock(); }catch(e){} }
+document.addEventListener('pointerlockchange', ()=>{ /* pointer lock engaged */ });
+document.addEventListener('mousemove', (e)=>{
+  if (document.pointerLockElement === renderer.domElement && !isMobile()){
+    camera.rotation.y -= e.movementX * 0.0026;
+    camera.rotation.x -= e.movementY * 0.0026;
+    camera.rotation.x = Math.max(-Math.PI/2+0.05, Math.min(Math.PI/2-0.05, camera.rotation.x));
+  }
+});
+
+// simple keyboard for desktop
+const keys = {};
+window.addEventListener('keydown', e=>keys[e.code]=true); window.addEventListener('keyup', e=>keys[e.code]=false);
+
+// fire button (raycast)
+document.getElementById('fireBtn').addEventListener('click', shoot);
+document.getElementById('fireBtn').addEventListener('touchstart', (e)=>{ e.preventDefault(); shoot(); }, {passive:false});
+
+// shoot -> raycast from camera forward
+function shoot(){
+  const from = camera.getWorldPosition(new THREE.Vector3());
+  const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+  const ray = new THREE.Raycaster(from, dir, 0.5, 80);
+  const hit = ray.intersectObjects(objects, false)[0];
+  if (hit){
+    const obj = hit.object;
+    // damage
+    obj.userData.hp = (obj.userData.hp||30) - 12;
+    if (obj.userData.hp <= 0){
+      // remove
+      scene.remove(obj);
+      objects = objects.filter(o=>o!==obj);
+      spawnHitParticles(hit.point, dir, 10);
+      showMsg('Destroyed!');
+    } else {
+      // tint
+      const ratio = Math.max(0, Math.min(1, obj.userData.hp / 80));
+      obj.material.color.setRGB(1, ratio*0.8 + 0.2, ratio*0.6);
+      spawnHitParticles(hit.point, dir, 6);
     }
+  } else {
+    // miss particle
+    spawnHitParticles(from.clone().add(dir.clone().multiplyScalar(20)), dir, 4);
   }
 }
 
-/* --- Physics step & sync --- */
-function stepPhysics(dt){
-  if (!physicsWorld) return;
-  physicsWorld.stepSimulation(dt, 10);
-  // sync rigid bodies
-  for (let i=0;i<rigidBodies.length;i++){
-    const obj = rigidBodies[i];
-    const body = obj.userData.physicsBody;
-    if (!body) continue;
-    const ms = body.getMotionState();
-    if (ms){
-      ms.getWorldTransform(tmpTrans);
-      const p = tmpTrans.getOrigin(); const q = tmpTrans.getRotation();
-      obj.position.set(p.x(), p.y(), p.z());
-      obj.quaternion.set(q.x(), q.y(), q.z(), q.w());
-      // check destructible boxes by userData.hp
-      if (obj.userData.hp){
-        // if linear velocity high -> consider hit
-        const lv = body.getLinearVelocity(); const speed = Math.hypot(lv.x(), lv.y(), lv.z());
-        if (speed > 10){
-          obj.userData.hp -= Math.floor(speed * 0.6);
-          if (obj.userData.hp <= 0){
-            explodeObject(obj);
-          } else {
-            const ratio = Math.max(0, Math.min(1, obj.userData.hp / 80));
-            obj.material.color.setRGB(1, ratio*0.8 + 0.2, ratio*0.6);
-          }
-        }
-      }
-    }
-  }
-}
-
-/* --- Explode object into pieces --- */
-function explodeObject(obj){
-  const pos = obj.position.clone(); removeRigidBody(obj);
-  for (let i=0;i<8;i++){
-    const s = 0.12 + Math.random()*0.16;
-    const g = new THREE.BoxGeometry(s,s,s);
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({color:0xff6b54}));
-    m.position.copy(pos).add(new THREE.Vector3((Math.random()-0.5)*0.6, Math.random()*0.6, (Math.random()-0.5)*0.6));
+// spawn simple particles at hit
+function spawnHitParticles(pos, dir, count){
+  for (let i=0;i<count;i++){
+    const g = new THREE.SphereGeometry(0.03,6,6);
+    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({color:0xffdd66}));
+    m.position.copy(pos).add(new THREE.Vector3((Math.random()-0.5)*0.3,(Math.random()-0.5)*0.3,(Math.random()-0.5)*0.3));
+    m.userData.life = 0.6 + Math.random()*0.8;
+    m.userData.vel = new THREE.Vector3((Math.random()-0.5)*2, Math.random()*2, (Math.random()-0.5)*2).add(dir.clone().multiplyScalar(2));
     scene.add(m);
-    // physics
-    const A = AmmoLib;
-    const mass = s*1.4;
-    const transform = new A.btTransform(); transform.setIdentity();
-    transform.setOrigin(new A.btVector3(m.position.x, m.position.y, m.position.z));
-    const motionState = new A.btDefaultMotionState(transform);
-    const shape = new A.btBoxShape(new A.btVector3(s/2,s/2,s/2));
-    const localInertia = new A.btVector3(0,0,0); shape.calculateLocalInertia(mass, localInertia);
-    const rbInfo = new A.btRigidBodyConstructionInfo(mass, motionState, shape, localInertia);
-    const body = new A.btRigidBody(rbInfo);
-    physicsWorld.addRigidBody(body);
-    m.userData.physicsBody = body; rigidBodies.push(m);
-    const impulse = new A.btVector3((Math.random()-0.5)*6, Math.random()*6, (Math.random()-0.5)*6);
-    body.setLinearVelocity(impulse);
-    setTimeout(()=>removeRigidBody(m), 3500 + Math.random()*3000);
+    bullets.push(m);
   }
 }
 
-/* --- Player movement: control the capsule body by setting linear velocity --- */
-function controlPlayer(dt){
-  if (!playerBody) return;
-  // compute desired movement vector in world-space (based on camera rotation)
-  const forward = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).setY(0).normalize();
-  const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), forward).normalize();
-  // combine joystick (moveInput: x,y where y points up the joystick area -> forward)
-  const inputF = -moveInput.y; // joystick y inverted (up -> negative angle)
-  const inputS = moveInput.x;
-  let moveDir = new THREE.Vector3();
-  moveDir.addScaledVector(forward, inputF);
-  moveDir.addScaledVector(right, inputS);
-  if (moveDir.lengthSq() > 1) moveDir.normalize();
-  const moveSpeed = 4.6; // tuned walking speed
-  const targetVel = moveDir.multiplyScalar(moveSpeed);
-  // read current body velocity
-  const lv = playerBody.getLinearVelocity();
-  const currentVel = new THREE.Vector3(lv.x(), lv.y(), lv.z());
-  // preserve vertical velocity (gravity/jump)
-  const newVel = new THREE.Vector3(targetVel.x, currentVel.y, targetVel.z);
-  // set linear velocity directly (works reasonably for a player capsule)
-  playerBody.setLinearVelocity(new AmmoLib.btVector3(newVel.x, newVel.y, newVel.z));
-  // update playerMesh pos for camera follow
-  const ms = playerBody.getMotionState();
-  if (ms){
-    ms.getWorldTransform(tmpTrans);
-    const p = tmpTrans.getOrigin(); const q = tmpTrans.getRotation();
-    playerMesh.position.set(p.x(), p.y(), p.z());
-    playerMesh.quaternion.set(q.x(), q.y(), q.z(), q.w());
-    // move camera to follow above the capsule
-    const camTarget = new THREE.Vector3(p.x(), p.y()+0.7, p.z());
-    camera.position.lerp(camTarget, Math.min(1, dt*8));
-  }
-}
-
-/* --- Update HUD --- */
-function updateHUD(){ document.getElementById('hp').textContent = playerState.hp; document.getElementById('ammo').textContent = playerState.ammo; }
-
-/* --- Utility: window resize --- */
-function onWindowResize(){
-  camera.aspect = window.innerWidth/window.innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-}
-
-/* --- Show small message --- */
+// message helper
 let msgTimer = null;
 function showMsg(t){
   const el = document.getElementById('msg'); el.textContent = t; el.style.opacity = 1;
-  clearTimeout(msgTimer); msgTimer = setTimeout(()=>{ el.style.opacity = 0; el.textContent=''; }, 1600);
+  clearTimeout(msgTimer); msgTimer = setTimeout(()=>{ el.style.opacity = 0; el.textContent=''; }, 1400);
 }
 
-/* --- Main loop --- */
-function loop(ts){
+// small helpers
+function isMobile(){ return 'ontouchstart' in window && /Mobi|Android/i.test(navigator.userAgent); }
+
+// simple player collision using raycasts downward & forward
+function stepPlayer(dt){
+  // build movement vector from inputs (joystick + keyboard fallback)
+  let fwd = 0, str = 0;
+  if (isMobile()){
+    fwd += -moveInput.y; str += moveInput.x;
+  } else {
+    if (keys['KeyW']||keys['ArrowUp']) fwd += 1;
+    if (keys['KeyS']||keys['ArrowDown']) fwd -= 1;
+    if (keys['KeyA']||keys['ArrowLeft']) str -= 1;
+    if (keys['KeyD']||keys['ArrowRight']) str += 1;
+  }
+  // direction from camera yaw
+  const dir = new THREE.Vector3(0,0,-1).applyEuler(new THREE.Euler(camera.rotation.x, camera.rotation.y, 0, 'YXZ'));
+  dir.y = 0; dir.normalize();
+  const right = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), dir).normalize();
+  const move = new THREE.Vector3();
+  move.addScaledVector(dir, fwd);
+  move.addScaledVector(right, str);
+  if (move.lengthSq() > 1) move.normalize();
+  // apply speed & dt
+  const speed = player.speed;
+  const desired = move.multiplyScalar(speed * dt);
+  // simple forward collision detection: raycast in move direction
+  const probeFrom = player.pos.clone().add(new THREE.Vector3(0,0.4,0));
+  const probe = new THREE.Raycaster(probeFrom, desired.clone().normalize(), 0, desired.length()+0.3);
+  const hit = probe.intersectObjects(objects.concat(/* walls & ground are also in scene*/ scene.children), true)[0];
+  if (!hit){
+    player.pos.add(desired);
+  } else {
+    // slide along: cancel component toward normal
+    const n = hit.face ? hit.face.normal.clone() : new THREE.Vector3(0,1,0);
+    // project desired onto plane
+    const slide = desired.clone().sub(n.clone().multiplyScalar(desired.dot(n)));
+    player.pos.add(slide.multiplyScalar(0.9));
+  }
+  // gravity & ground check
+  player.vel.y -= 9.82 * dt;
+  // raycast downward to find ground
+  const down = new THREE.Raycaster(player.pos.clone().add(new THREE.Vector3(0,0.3,0)), new THREE.Vector3(0,-1,0), 0, 1.2);
+  const groundHit = down.intersectObjects(scene.children, true)[0];
+  if (groundHit){
+    // place player on ground
+    player.pos.y = groundHit.point.y + 1.6;
+    player.vel.y = 0;
+    player.onGround = true;
+  } else {
+    player.onGround = false;
+    player.pos.y += player.vel.y * dt;
+  }
+  // update camera smoothly above player
+  const camTarget = player.pos.clone();
+  camera.position.lerp(camTarget, Math.min(1, dt*10));
+  camera.position.y = player.pos.y;
+  // clamp camera pitch
+  camera.rotation.x = Math.max(-Math.PI/2+0.05, Math.min(Math.PI/2-0.05, camera.rotation.x));
+}
+
+// basic jump on screen tap (double-tap on left) - simple implementation using two quick taps
+let lastTap = 0;
+document.addEventListener('touchend', (e)=>{
+  const t = performance.now();
+  if (t - lastTap < 300){
+    // jump
+    if (player.onGround){ player.vel.y = 5.2; player.onGround = false; }
+  }
+  lastTap = t;
+});
+
+// update loop
+function animate(ts){
+  if (!started) return;
+  requestAnimationFrame(animate);
   const now = ts || performance.now();
   const dt = Math.min(0.05, (now - lastTime)/1000);
   lastTime = now;
-  // physics step
-  stepPhysics(dt);
-  // player control
-  controlPlayer(dt);
-  // simple check: bullets hitting boxes handled in physics step
+
+  // step player
+  stepPlayer(dt);
+
+  // update camera look (camera.rotation is updated by touch/mouse)
+  // camera already at player.pos via lerp
+
+  // update bullets/particles
+  for (let i = bullets.length -1; i >= 0; i--){
+    const p = bullets[i];
+    p.userData.life -= dt;
+    p.position.addScaledVector(p.userData.vel, dt);
+    p.material.opacity = Math.max(0, p.userData.life/0.8);
+    if (p.userData.life <= 0){
+      scene.remove(p); bullets.splice(i,1);
+    }
+  }
+
+  // simple idle rotation for boxes for slight life
+  for (let o of objects){
+    o.rotation.y += dt*0.2;
+  }
+
   // render
   renderer.render(scene, camera);
-  requestAnimationFrame(loop);
 }
 
-/* --- Helpers: remove all bodies on page unload (cleanup) --- */
-window.addEventListener('beforeunload', ()=>{ try{ if (physicsWorld) AmmoLib.destroy(physicsWorld); }catch(e){} });
+// window resize
+window.addEventListener('resize', ()=>{ renderer.setSize(window.innerWidth, window.innerHeight); camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); });
+
+// Start button handler
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  if (started) return;
+  document.getElementById('overlay').style.display = 'none';
+  initThree();
+  // attach touch listeners now that renderer exists
+  renderer.domElement.addEventListener('touchstart', onTouchStart, {passive:false});
+  renderer.domElement.addEventListener('touchmove', onTouchMove, {passive:false});
+  renderer.domElement.addEventListener('touchend', onTouchEnd, {passive:false});
+  // desktop pointer lock optional
+  renderer.domElement.addEventListener('click', ()=>{ if (!isMobile()) renderer.domElement.requestPointerLock(); });
+  started = true;
+  lastTime = performance.now();
+  requestAnimationFrame(animate);
+});
+
+// helper: simple desktop check
+function isMobile(){ return 'ontouchstart' in window && /Mobi|Android/i.test(navigator.userAgent); }
+
+// show small message
+function showMsg(t){ const el=document.getElementById('msg'); el.textContent=t; el.style.opacity=1; setTimeout(()=>{ el.style.opacity=0; }, 1200); }
 
 </script>
 </body>
