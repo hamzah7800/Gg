@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Badminton Touch Game</title>
+<style>
+  body { margin: 0; background: #000; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+// ===== Canvas Setup =====
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// ===== Base64 Embedded Images =====
+// Simple placeholder images (replace Base64 if you want better graphics)
+const courtImg = new Image();
+courtImg.src = "data:image/svg+xml;base64," + btoa(`
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400">
+<rect width="800" height="400" fill="#7ed957"/>
+<line x1="0" y1="200" x2="800" y2="200" stroke="white" stroke-width="4"/>
+<rect x="10" y="10" width="780" height="380" fill="none" stroke="white" stroke-width="4"/>
+</svg>`);
+
+const racketImg = new Image();
+racketImg.src = "data:image/svg+xml;base64," + btoa(`
+<svg xmlns="http://www.w3.org/2000/svg" width="60" height="120">
+<ellipse cx="30" cy="40" rx="20" ry="30" fill="gray" stroke="black" stroke-width="2"/>
+<rect x="27" y="70" width="6" height="50" fill="brown"/>
+</svg>`);
+
+const fansImg = new Image();
+fansImg.src = "data:image/svg+xml;base64," + btoa(`
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="100">
+<rect width="800" height="100" fill="#ccc"/>
+<circle cx="50" cy="50" r="15" fill="white"/>
+<circle cx="100" cy="50" r="15" fill="white"/>
+<circle cx="150" cy="50" r="15" fill="white"/>
+<circle cx="200" cy="50" r="15" fill="white"/>
+<circle cx="250" cy="50" r="15" fill="white"/>
+</svg>`);
+
+// ===== Game Variables =====
+let shuttle = { x: canvas.width/2, y: canvas.height/2, vx: 0, vy: 0, radius: 10 };
+let racket = { x: canvas.width/2, y: canvas.height - 150 };
+let score = 0;
+
+// ===== Touch Controls =====
+canvas.addEventListener("touchmove", e => {
+    const touch = e.touches[0];
+    racket.x = touch.clientX - 30;
+    racket.y = touch.clientY - 60;
+});
+
+canvas.addEventListener("touchstart", () => {
+    if (Math.abs(shuttle.x - racket.x) < 50 && Math.abs(shuttle.y - racket.y) < 50) {
+        shuttle.vx = (Math.random() - 0.5) * 10;
+        shuttle.vy = -8;
+        score++;
+    }
+});
+
+// ===== Update & Draw =====
+function update() {
+    shuttle.x += shuttle.vx;
+    shuttle.y += shuttle.vy;
+    shuttle.vy += 0.2; // gravity
+
+    // Bounce off walls
+    if (shuttle.x - shuttle.radius < 0 || shuttle.x + shuttle.radius > canvas.width) {
+        shuttle.vx *= -1;
+    }
+    // Floor
+    if (shuttle.y + shuttle.radius > canvas.height) {
+        shuttle.vy = 0;
+        shuttle.vx = 0;
+    }
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw court
+    ctx.drawImage(courtImg, (canvas.width-800)/2, (canvas.height-400)/2, 800, 400);
+
+    // Draw fans
+    ctx.drawImage(fansImg, (canvas.width-800)/2, (canvas.height-400)/2 - 100, 800, 100);
+
+    // Draw racket
+    ctx.drawImage(racketImg, racket.x, racket.y, 60, 120);
+
+    // Draw shuttle
+    ctx.beginPath();
+    ctx.arc(shuttle.x, shuttle.y, shuttle.radius, 0, Math.PI*2);
+    ctx.fillStyle = "white";
+    ctx.fill();
+
+    // Draw score
+    ctx.fillStyle = "black";
+    ctx.font = "24px Arial";
+    ctx.fillText("Score: " + score, 20, 40);
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>
