@@ -2,375 +2,40 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>Mobile FPS — Dual Joystick + Jump</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Mini FPS (Raycaster) — No External Assets</title>
 <style>
-  html,body{height:100%;margin:0;background:#08101b;color:#fff;font-family:system-ui,Segoe UI,Roboto,Arial;overflow:hidden}
-  canvas{display:block}
-  /* HUD */
-  #hud{position:fixed;left:10px;top:10px;z-index:40;display:flex;gap:10px;align-items:center}
-  .icon{width:64px;height:64px;border-radius:8px;background:#0e1620;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 30px rgba(0,0,0,0.6)}
-  #hpBox,#ammoBox{font-weight:700;text-align:center;font-size:13px}
-  /* joysticks zones */
-  #leftZone{position:fixed;left:14px;bottom:14px;width:140px;height:140px;z-index:35;touch-action:none}
-  #rightZone{position:fixed;right:14px;bottom:14px;width:140px;height:140px;z-index:35;touch-action:none}
-  /* fire button fallback (not necessary but visible) */
-  #fireBtn{position:fixed;right:28px;bottom:28px;width:88px;height:88px;border-radius:50%;z-index:36;background:linear-gradient(180deg,#ff6b6b,#c0392b);display:flex;align-items:center;justify-content:center;font-weight:900}
-  /* overlay start */
-  #overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(0,0,0,0.6),rgba(0,0,0,0.9));z-index:60;text-align:center;padding:20px}
-  .btn{background:#1f8fff;border:0;color:#fff;padding:10px 14px;border-radius:10px;font-weight:700}
-  #crosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:25;pointer-events:none}
-  #msg{position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:50;background:rgba(0,0,0,0.45);padding:8px 12px;border-radius:999px;font-weight:700;opacity:0;transition:opacity .2s}
+  html,body { height:100%; margin:0; background:#111; color:#eee; font-family:sans-serif; }
+  #gameCanvas { display:block; width:100vw; height:100vh; background:#000; cursor: crosshair; }
+  #hud {
+    position:fixed; left:12px; top:12px; z-index:10;
+    background:rgba(0,0,0,0.4); padding:8px 12px; border-radius:8px;
+    backdrop-filter: blur(4px);
+  }
+  #instructions {
+    position:fixed; right:12px; bottom:12px; z-index:10;
+    background:rgba(0,0,0,0.4); padding:8px 12px; border-radius:8px;
+  }
+  .bar { height:12px; width:180px; background:#333; border-radius:6px; overflow:hidden; }
+  .bar > i { display:block; height:100%; background:linear-gradient(90deg,#ff6b6b,#ffcd75); width:100%; }
+  button { margin-top:6px; padding:6px 10px; border-radius:6px; border:none; cursor:pointer; }
 </style>
 </head>
 <body>
-  <!-- Overlay / start -->
-  <div id="overlay">
-    <div>
-      <h2>Mobile FPS — Touch Controls</h2>
-      <p style="opacity:.95">Left joystick: move (tap to jump). Right joystick: look (tap to fire). Works from file:// — open on phone or mobile emulator.</p>
-      <div style="margin-top:14px"><button id="startBtn" class="btn">Start</button></div>
-    </div>
-  </div>
+<canvas id="gameCanvas"></canvas>
 
-  <!-- HUD -->
-  <div id="hud">
-    <div class="icon"><div id="hpBox">HP<br><span id="hp">100</span></div></div>
-    <div class="icon"><div id="ammoBox">AMMO<br><span id="ammo">50</span></div></div>
-  </div>
+<div id="hud">
+  <div><strong>Health</strong></div>
+  <div class="bar" style="margin-bottom:6px;"><i id="hpFill" style="width:100%"></i></div>
+  <div><strong>Ammo</strong> <span id="ammo">20</span></div>
+  <div style="margin-top:6px;"><strong>Kills</strong> <span id="kills">0</span></div>
+  <div style="margin-top:6px;"><button id="pointerBtn">Click to play (Pointer Lock)</button></div>
+</div>
 
-  <!-- joystick zones -->
-  <div id="leftZone"></div>
-  <div id="rightZone"></div>
+<div id="instructions">
+  WASD — move · Mouse — look · Left click — shoot · R — reload
+</div>
 
-  <!-- optional fire button -->
-  <div id="fireBtn" style="display:none">FIRE</div>
-
-  <!-- crosshair -->
-  <div id="crosshair">
-    <svg width="36" height="36" viewBox="0 0 36 36"><circle cx="18" cy="18" r="2.5" fill="#fff"/><path d="M18 0 L18 6 M18 36 L18 30 M0 18 L6 18 M36 18 L30 18" stroke="#fff" stroke-width="1.4" stroke-linecap="round" opacity="0.6"/></svg>
-  </div>
-
-  <div id="msg"></div>
-
-  <!-- libs from CDN (Three and Nipple) -->
-  <script src="https://unpkg.com/three@0.159.0/build/three.min.js"></script>
-  <script src="https://unpkg.com/nipplejs@0.9.0/dist/nipplejs.min.js"></script>
-
-<script>
-/*
-Mobile FPS — dual-joystick + jump on left tap + fire on right tap
-Simple raycast shooting, capsule-like player using raycasts for grounding & collisions.
-Single-file, works from file:// (no wasm).
-*/
-
-let renderer, scene, camera, clock;
-let player = {
-  pos: new THREE.Vector3(0,1.6,6),
-  vel: new THREE.Vector3(0,0,0),
-  speed: 4.6,
-  onGround: false,
-  hp: 100,
-  ammo: 50
-};
-let objects = []; // targets & walls
-let particles = [];
-let lastTime = 0;
-let started = false;
-
-// joystick state
-let moveInput = {x:0,y:0};
-let lookInput = {x:0,y:0}; // for continuous look (not used directly)
-let leftTapState = {start:0, moved:false};
-let rightTapState = {start:0, moved:false};
-
-// init Three scene
-function initScene(){
-  renderer = new THREE.WebGLRenderer({antialias:true});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  document.body.appendChild(renderer.domElement);
-
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87ceeb);
-  camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 200);
-  camera.position.copy(player.pos);
-  clock = new THREE.Clock();
-
-  // lights
-  scene.add(new THREE.HemisphereLight(0xffffee, 0x444466, 1.0));
-  const dl = new THREE.DirectionalLight(0xffffff, 0.8); dl.position.set(5,12,5); scene.add(dl);
-
-  // ground & walls
-  const groundMat = new THREE.MeshStandardMaterial({color:0x3a5b2a});
-  const ground = new THREE.Mesh(new THREE.BoxGeometry(40,1,40), groundMat); ground.position.set(0,-0.5,0); scene.add(ground); objects.push(ground);
-
-  makeWall(0,2.5,-20,40,5,1); makeWall(0,2.5,20,40,5,1);
-  makeWall(-20,2.5,0,1,5,40); makeWall(20,2.5,0,1,5,40);
-
-  // target boxes
-  for (let i=0;i<12;i++){
-    const x = (Math.random()-0.5)*14;
-    const z = -2 - Math.random()*12;
-    spawnBox(new THREE.Vector3(x,1.2,z));
-  }
-
-  // camera initial orientation
-  camera.rotation.set(0,0,0);
-  updateHUD();
-}
-
-// helper to make a wall (static)
-function makeWall(x,y,z,w,h,d){
-  const g = new THREE.BoxGeometry(w,h,d);
-  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({color:0x6f6f6f}));
-  m.position.set(x,y,z); scene.add(m); objects.push(m);
-}
-
-// spawn a box target
-function spawnBox(pos){
-  const geo = new THREE.BoxGeometry(1,1.2,1);
-  const mat = new THREE.MeshStandardMaterial({color:0x8fb3ff});
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.position.copy(pos);
-  mesh.userData.hp = 25 + Math.floor(Math.random()*45);
-  scene.add(mesh); objects.push(mesh);
-  return mesh;
-}
-
-// HUD update
-function updateHUD(){ document.getElementById('hp').textContent = Math.max(0, Math.floor(player.hp)); document.getElementById('ammo').textContent = Math.max(0, player.ammo); }
-
-// show short message
-let msgTimer = null;
-function showMsg(t){
-  const el = document.getElementById('msg'); el.textContent = t; el.style.opacity = 1;
-  clearTimeout(msgTimer); msgTimer = setTimeout(()=>{ el.style.opacity = 0; el.textContent=''; }, 1400);
-}
-
-// joystick setup (two joysticks)
-// left joystick — movement + tap to jump
-const leftZone = document.getElementById('leftZone');
-const leftNip = nipplejs.create({zone:leftZone, mode:'static', position:{left:'70px', top:'70px'}, color:'#ffffff88', size:120});
-leftNip.on('start', (evt, data)=>{ leftTapState.start = performance.now(); leftTapState.moved = false; });
-leftNip.on('move', (evt, data)=>{ leftTapState.moved = true; const force = data.force || 0; const ang = data.angle ? data.angle.radian : 0; moveInput.x = Math.cos(ang) * force; moveInput.y = Math.sin(ang) * force; });
-leftNip.on('end', (evt, data)=>{ // detect quick tap (jump)
-  const dt = performance.now() - leftTapState.start;
-  if (!leftTapState.moved && dt < 280){ // quick tap => jump
-    if (player.onGround){ player.vel.y = 5.2; player.onGround = false; }
-  }
-  moveInput.x = 0; moveInput.y = 0;
-});
-
-// right joystick — look + tap to fire
-const rightZone = document.getElementById('rightZone');
-const rightNip = nipplejs.create({zone:rightZone, mode:'static', position:{right:'70px', top:'70px'}, color:'#ffffff88', size:120});
-rightNip.on('start', (evt,data)=>{ rightTapState.start = performance.now(); rightTapState.moved = false; });
-rightNip.on('move', (evt,data)=>{ rightTapState.moved = true; const force = data.force || 0; const ang = data.angle ? data.angle.radian : 0; // convert to local dx/dy
-  // nipple's angle 0 is up; compute dx/dy
-  lookInput.x = Math.sin(ang) * force; lookInput.y = -Math.cos(ang) * force; // scaled [-1..1]
-});
-rightNip.on('end', (evt,data)=>{ const dt = performance.now() - rightTapState.start;
-  if (!rightTapState.moved && dt < 220){
-    // quick tap => shoot
-    shoot();
-  }
-  lookInput.x = 0; lookInput.y = 0;
-});
-
-// also allow right-zone continuous touch for camera look using touchmove for better control
-// (nipple already handles move events; we'll convert lookInput into camera rotation each frame)
-
-// optional fallback fire button (desktop)
-document.getElementById('fireBtn').addEventListener('click', shoot);
-
-// shoot via raycast from camera
-function shoot(){
-  if (player.ammo <= 0){ showMsg('No ammo'); return; }
-  player.ammo--; updateHUD();
-  const from = camera.getWorldPosition(new THREE.Vector3());
-  const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
-  const ray = new THREE.Raycaster(from, dir, 0.6, 80);
-  const hit = ray.intersectObjects(objects, false)[0];
-  if (hit){
-    const obj = hit.object;
-    obj.userData.hp = (obj.userData.hp || 30) - 12;
-    spawnHitParticles(hit.point, dir, 8);
-    if (obj.userData.hp <= 0){
-      scene.remove(obj);
-      objects = objects.filter(o => o !== obj);
-      showMsg('Destroyed!');
-    } else {
-      const ratio = Math.max(0, Math.min(1, obj.userData.hp / 80));
-      if (obj.material) obj.material.color.setRGB(1, ratio*0.8 + 0.2, ratio*0.6);
-    }
-  } else {
-    spawnHitParticles(from.clone().add(dir.clone().multiplyScalar(20)), dir, 5);
-  }
-}
-
-// spawn simple particles at hit
-function spawnHitParticles(pos, dir, count){
-  for (let i=0;i<count;i++){
-    const g = new THREE.SphereGeometry(0.03,6,6);
-    const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({color:0xffdd66}));
-    m.position.copy(pos).add(new THREE.Vector3((Math.random()-0.5)*0.25,(Math.random()-0.5)*0.25,(Math.random()-0.5)*0.25));
-    m.userData.vel = new THREE.Vector3((Math.random()-0.5)*2 + dir.x*2, Math.random()*2 + Math.abs(dir.y)*0.6, (Math.random()-0.5)*2 + dir.z*2);
-    m.userData.life = 0.6 + Math.random()*0.8;
-    scene.add(m); particles.push(m);
-  }
-}
-
-// main player stepping: movement, collisions (raycast), gravity
-function stepPlayer(dt){
-  // input: moveInput (from left joystick) or WASD fallback
-  let fwd = 0, str = 0;
-  if (moveInput.x || moveInput.y){
-    // nipple's y points up (negative?), but earlier we used cos/sin mapping so use direct
-    str += moveInput.x;
-    fwd += -moveInput.y; // invert so pushing up on joystick moves forward
-  } else {
-    // desktop fallback
-    if (keys['KeyW']||keys['ArrowUp']) fwd += 1;
-    if (keys['KeyS']||keys['ArrowDown']) fwd -= 1;
-    if (keys['KeyA']||keys['ArrowLeft']) str -= 1;
-    if (keys['KeyD']||keys['ArrowRight']) str += 1;
-  }
-
-  // lookInput influences camera rotation directly
-  // apply continuous small rotation from right joystick
-  if (lookInput.x || lookInput.y){
-    camera.rotation.order = 'YXZ';
-    camera.rotation.y -= lookInput.x * 0.02; // sensitivity tuned
-    camera.rotation.x -= lookInput.y * 0.02;
-    camera.rotation.x = Math.max(-Math.PI/2+0.05, Math.min(Math.PI/2-0.05, camera.rotation.x));
-  }
-
-  // compute move dir in world space (camera forward & right)
-  const forwardVec = new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
-  forwardVec.y = 0; forwardVec.normalize();
-  const rightVec = new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0), forwardVec).normalize();
-  const move = new THREE.Vector3();
-  move.addScaledVector(forwardVec, fwd);
-  move.addScaledVector(rightVec, str);
-  if (move.lengthSq() > 1) move.normalize();
-  const desired = move.multiplyScalar(player.speed * dt);
-
-  // small collision probe: raycast from player's height forward
-  const probeFrom = player.pos.clone().add(new THREE.Vector3(0,0.45,0));
-  const probeDir = desired.clone().normalize();
-  const probeLen = desired.length() + 0.35;
-  let blocked = false;
-  if (probeLen > 0.001){
-    const probe = new THREE.Raycaster(probeFrom, probeDir, 0, probeLen);
-    const hit = probe.intersectObjects(objects, true)[0];
-    if (hit) blocked = true;
-  }
-  if (!blocked){
-    player.pos.add(desired);
-  } else {
-    // slide along obstacle: attempt perpendicular movement (very simple)
-    // try strafe only
-    const strOnly = new THREE.Vector3().copy(rightVec).multiplyScalar(str * player.speed * dt);
-    const probe2 = new THREE.Raycaster(probeFrom, strOnly.clone().normalize(), 0, Math.abs(strOnly.length()) + 0.25);
-    const hit2 = probe2.intersectObjects(objects, true)[0];
-    if (!hit2) player.pos.add(strOnly);
-    // else blocked fully
-  }
-
-  // gravity & ground check
-  player.vel.y -= 9.82 * dt;
-  // downward raycast to ground
-  const downRay = new THREE.Raycaster(player.pos.clone().add(new THREE.Vector3(0,0.4,0)), new THREE.Vector3(0,-1,0), 0, 1.6);
-  const gHit = downRay.intersectObjects(scene.children, true)[0];
-  if (gHit){
-    player.pos.y = gHit.point.y + 1.6;
-    player.vel.y = 0;
-    player.onGround = true;
-  } else {
-    player.onGround = false;
-    player.pos.y += player.vel.y * dt;
-  }
-
-  // update camera follow (lerp for smoothness)
-  const camTarget = player.pos.clone();
-  camera.position.lerp(camTarget, Math.min(1, dt*10));
-  camera.position.y = player.pos.y;
-}
-
-// particle update
-function stepParticles(dt){
-  for (let i = particles.length - 1; i >= 0; i--){
-    const p = particles[i];
-    p.userData.life -= dt;
-    p.position.addScaledVector(p.userData.vel, dt);
-    p.material.opacity = Math.max(0, p.userData.life / 0.8);
-    if (p.userData.life <= 0){
-      scene.remove(p); particles.splice(i,1);
-    }
-  }
-}
-
-// simple keyboard fallback
-const keys = {};
-window.addEventListener('keydown', e=>keys[e.code]=true);
-window.addEventListener('keyup', e=>keys[e.code]=false);
-
-// pointerlock for desktop mouse look
-function setupPointerLock(){
-  renderer.domElement.addEventListener('click', ()=>{ if (!isMobile()) renderer.domElement.requestPointerLock(); });
-  document.addEventListener('pointerlockchange', ()=>{ /*noop*/ });
-  document.addEventListener('mousemove', (e)=>{
-    if (document.pointerLockElement === renderer.domElement && !isMobile()){
-      camera.rotation.y -= e.movementX * 0.0026;
-      camera.rotation.x -= e.movementY * 0.0026;
-      camera.rotation.x = Math.max(-Math.PI/2+0.05, Math.min(Math.PI/2-0.05, camera.rotation.x));
-    }
-  });
-}
-
-// main loop
-let prev = performance.now();
-function loop(now){
-  if (!started) return;
-  requestAnimationFrame(loop);
-  const dt = Math.min(0.05, (now - prev) / 1000);
-  prev = now;
-
-  stepPlayer(dt);
-  stepParticles(dt);
-
-  // gentle idle rotation on boxes to keep scene alive
-  for (const o of objects) o.rotation.y += dt * 0.14;
-
-  renderer.render(scene, camera);
-}
-
-// init/start interactions
-document.getElementById('startBtn').addEventListener('click', ()=>{
-  document.getElementById('overlay').style.display = 'none';
-  if (!started){
-    initScene();
-    setupPointerLock();
-    window.addEventListener('resize', onResize);
-    // enable fire fallback button on desktop for convenience
-    if (!isMobile()) document.getElementById('fireBtn').style.display = 'flex';
-    started = true; prev = performance.now(); requestAnimationFrame(loop);
-  }
-});
-
-// resize handler
-function onResize(){ renderer.setSize(window.innerWidth, window.innerHeight); camera.aspect = window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); }
-
-// helper: isMobile
-function isMobile(){ return 'ontouchstart' in window && /Mobi|Android/i.test(navigator.userAgent); }
-
-// small UI helpers: jump via left joystick quick tap already implemented above in nipple handlers
-// Clicking right zone or tapping right quick triggers shoot (implemented in rightNip end)
-
-// Update HUD periodically
-setInterval(updateHUD, 300);
-
-</script>
+<script src="game.js"></script>
 </body>
 </html>
