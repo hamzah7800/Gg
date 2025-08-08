@@ -1,120 +1,250 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Badminton Touch Game</title>
-<style>
-  body { margin: 0; background: #000; overflow: hidden; }
-  canvas { display: block; }
-</style>
+  <meta charset="utf-8" />
+  <title>3D Badminton - Three.js (Single File)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    html,body{height:100%;margin:0;background:#0b1020;color:#ddd;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial}
+    #container{width:100vw;height:100vh;overflow:hidden;position:relative}
+    #hud{position:absolute;left:12px;top:12px;color:#fff;font-weight:600;text-shadow:0 2px 6px rgba(0,0,0,.6)}
+    #score{margin-top:6px;font-size:14px}
+    /* mobile controls */
+    .joy{position:absolute;bottom:22px;left:22px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center}
+    .joy .knob{width:48px;height:48px;border-radius:50%;background:rgba(255,255,255,0.14)}
+    .swingBtn{position:absolute;right:22px;bottom:34px;width:86px;height:86px;border-radius:50%;background:linear-gradient(180deg,#ff7a6b,#ff3b3b);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:18px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+    .hint{position:absolute;left:12px;bottom:12px;color:#ccc;font-size:13px}
+    .topbar{position:absolute;left:50%;transform:translateX(-50%);top:10px;background:rgba(0,0,0,0.25);padding:6px 12px;border-radius:8px}
+    button.small{margin-left:8px;padding:6px 8px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.06);color:#fff;border-radius:6px}
+  </style>
 </head>
 <body>
-<canvas id="gameCanvas"></canvas>
+<div id="container"></div>
+<div id="hud">
+  <div class="topbar">3D Badminton — <span id="mode">Player vs AI</span> <button class="small" id="resetBtn">Reset</button></div>
+  <div id="score">Player: 0 — AI: 0</div>
+</div>
+<div class="hint">Controls: WASD / Arrow keys or left virtual joystick. SPACE or swing button to hit.</div>
+<!-- Mobile joystick and swing button -->
+<div class="joy" id="joy" style="touch-action:none;display:none;"><div class="knob" id="knob"></div></div>
+<div class="swingBtn" id="swingBtn" style="display:none;">SWING</div>
 
+<script src="https://unpkg.com/three@0.158.0/build/three.min.js"></script>
+<script src="https://unpkg.com/three@0.158.0/examples/js/controls/OrbitControls.js"></script>
 <script>
-// ===== Canvas Setup =====
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+// Single-file Three.js badminton demo
+// No external assets. Everything procedurally created.
 
-// ===== Base64 Embedded Images =====
-// Simple placeholder images (replace Base64 if you want better graphics)
-const courtImg = new Image();
-courtImg.src = "data:image/svg+xml;base64," + btoa(`
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400">
-<rect width="800" height="400" fill="#7ed957"/>
-<line x1="0" y1="200" x2="800" y2="200" stroke="white" stroke-width="4"/>
-<rect x="10" y="10" width="780" height="380" fill="none" stroke="white" stroke-width="4"/>
-</svg>`);
+const container = document.getElementById('container');
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0b1020, 0.0012);
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 5000);
+camera.position.set(0, 180, 520);
 
-const racketImg = new Image();
-racketImg.src = "data:image/svg+xml;base64," + btoa(`
-<svg xmlns="http://www.w3.org/2000/svg" width="60" height="120">
-<ellipse cx="30" cy="40" rx="20" ry="30" fill="gray" stroke="black" stroke-width="2"/>
-<rect x="27" y="70" width="6" height="50" fill="brown"/>
-</svg>`);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight); renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
 
-const fansImg = new Image();
-fansImg.src = "data:image/svg+xml;base64," + btoa(`
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="100">
-<rect width="800" height="100" fill="#ccc"/>
-<circle cx="50" cy="50" r="15" fill="white"/>
-<circle cx="100" cy="50" r="15" fill="white"/>
-<circle cx="150" cy="50" r="15" fill="white"/>
-<circle cx="200" cy="50" r="15" fill="white"/>
-<circle cx="250" cy="50" r="15" fill="white"/>
-</svg>`);
+// Lights
+const hemi = new THREE.HemisphereLight(0xffffff, 0x444455, 0.8); scene.add(hemi);
+const dir = new THREE.DirectionalLight(0xffffff, 0.9); dir.position.set(200,400,200); dir.castShadow = true;
+dir.shadow.camera.left = -600; dir.shadow.camera.right = 600; dir.shadow.camera.top = 600; dir.shadow.camera.bottom = -600; dir.shadow.mapSize.set(2048,2048);
+scene.add(dir);
 
-// ===== Game Variables =====
-let shuttle = { x: canvas.width/2, y: canvas.height/2, vx: 0, vy: 0, radius: 10 };
-let racket = { x: canvas.width/2, y: canvas.height - 150 };
-let score = 0;
+// Court size constants (in world units)
+const COURT = { w: 600, d: 900, netH: 85 };
 
-// ===== Touch Controls =====
-canvas.addEventListener("touchmove", e => {
-    const touch = e.touches[0];
-    racket.x = touch.clientX - 30;
-    racket.y = touch.clientY - 60;
-});
+// Ground / court
+const courtGroup = new THREE.Group();
+const courtGeom = new THREE.PlaneGeometry(COURT.w, COURT.d, 4, 4);
+const courtMat = new THREE.MeshStandardMaterial({color:0x11664f, roughness:0.8, metalness:0.05});
+const courtMesh = new THREE.Mesh(courtGeom, courtMat); courtMesh.rotation.x = -Math.PI/2; courtMesh.receiveShadow = true; courtGroup.add(courtMesh);
+// painted lines using simple geometry
+function makeLine(x1,z1,x2,z2){ const g = new THREE.PlaneGeometry(1, Math.hypot(x2-x1,z2-z1)); const m = new THREE.MeshBasicMaterial({color:0xffffff}); const mesh = new THREE.Mesh(g,m); mesh.position.set((x1+x2)/2,0.01,(z1+z2)/2); mesh.rotation.x = -Math.PI/2; const angle = Math.atan2(z2-z1,x2-x1); mesh.rotation.z = angle; return mesh; }
+// outer lines
+courtGroup.add(makeLine(-COURT.w/2,-COURT.d/2,COURT.w/2,-COURT.d/2)); courtGroup.add(makeLine(-COURT.w/2,COURT.d/2,COURT.w/2,COURT.d/2));
+courtGroup.add(makeLine(-COURT.w/2,-COURT.d/2,-COURT.w/2,COURT.d/2)); courtGroup.add(makeLine(COURT.w/2,-COURT.d/2,COURT.w/2,COURT.d/2));
+// center net line
+courtGroup.add(makeLine(-COURT.w/2,0,COURT.w/2,0));
+scene.add(courtGroup);
 
-canvas.addEventListener("touchstart", () => {
-    if (Math.abs(shuttle.x - racket.x) < 50 && Math.abs(shuttle.y - racket.y) < 50) {
-        shuttle.vx = (Math.random() - 0.5) * 10;
-        shuttle.vy = -8;
-        score++;
-    }
-});
+// Net
+const netGeo = new THREE.BoxGeometry(COURT.w, 2, 6);
+const netMat = new THREE.MeshStandardMaterial({color:0x101010, metalness:0.1, roughness:0.9});
+const netTop = new THREE.Mesh(netGeo, netMat); netTop.position.set(0, COURT.netH+1, 0); netTop.castShadow = false; netTop.receiveShadow = false; scene.add(netTop);
+// add slender posts
+const postGeo = new THREE.CylinderGeometry(3,3,COURT.netH+20,12);
+const postMat = new THREE.MeshStandardMaterial({color:0x222222});
+const postL = new THREE.Mesh(postGeo, postMat); postL.position.set(-COURT.w/2-6, COURT.netH/2+8, 0); scene.add(postL);
+const postR = postL.clone(); postR.position.x = COURT.w/2+6; scene.add(postR);
 
-// ===== Update & Draw =====
-function update() {
-    shuttle.x += shuttle.vx;
-    shuttle.y += shuttle.vy;
-    shuttle.vy += 0.2; // gravity
+// Players and racket (procedural materials)
+function makePlayer(color){ const g = new THREE.Group(); const body = new THREE.Mesh(new THREE.BoxGeometry(22,60,18), new THREE.MeshStandardMaterial({color:color})); body.position.y = 30; body.castShadow=true; g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(10,12,12), new THREE.MeshStandardMaterial({color:0xffd1b3})); head.position.y = 64; head.castShadow=true; g.add(head);
+  // simple racket as thin box
+  const r = new THREE.Mesh(new THREE.BoxGeometry(6,28,2), new THREE.MeshStandardMaterial({color:0xdddddd})); r.position.set(20,40,0); r.rotation.z = -0.8; r.castShadow=true; g.add(r);
+  return g; }
 
-    // Bounce off walls
-    if (shuttle.x - shuttle.radius < 0 || shuttle.x + shuttle.radius > canvas.width) {
-        shuttle.vx *= -1;
-    }
-    // Floor
-    if (shuttle.y + shuttle.radius > canvas.height) {
-        shuttle.vy = 0;
-        shuttle.vx = 0;
-    }
+const player = { mesh: makePlayer(0x1b6eff), x:0, z:200, side:1, score:0, swing:false, swingTimer:0 };
+player.mesh.position.set(player.x,0,player.z); scene.add(player.mesh);
+const ai = { mesh: makePlayer(0xef3b3b), x:0, z:-200, side:-1, score:0, swing:false, swingTimer:0 };
+ai.mesh.position.set(ai.x,0,ai.z); scene.add(ai.mesh);
+
+// Shuttlecock (approx using sphere + cone for skirt)
+const shuttle = { mesh: null, x:0, y:160, z:0, vx:0, vy:0, vz:0, radius:6, inPlay:false, lastHit:null };
+(function createShuttle(){ const g = new THREE.Group(); const body = new THREE.Mesh(new THREE.SphereGeometry(6,12,12), new THREE.MeshStandardMaterial({color:0xffffff})); g.add(body);
+  const skirt = new THREE.Mesh(new THREE.ConeGeometry(10,16,8), new THREE.MeshStandardMaterial({color:0xf3f3f3})); skirt.rotation.x = Math.PI; skirt.position.y = -10; g.add(skirt);
+  g.castShadow = true; shuttle.mesh = g; shuttle.mesh.scale.set(0.9,0.9,0.9); scene.add(shuttle.mesh); }());
+
+// Camera management
+const camTarget = new THREE.Vector3(0,80,0);
+
+// Controls / input
+let input = { left:0, forward:0, swing:false };
+const keys = {};
+addEventListener('keydown', e=>{ keys[e.key.toLowerCase()]=true; if(e.code==='Space') input.swing=true; });
+addEventListener('keyup', e=>{ keys[e.key.toLowerCase()]=false; if(e.code==='Space') input.swing=false; });
+
+// Mobile UI detection
+const joy = document.getElementById('joy'), knob = document.getElementById('knob'), swingBtn = document.getElementById('swingBtn');
+function enableMobileUI(){ if(window.innerWidth < 900 || /Mobi|Android/i.test(navigator.userAgent)){
+  joy.style.display='flex'; swingBtn.style.display='flex';
+} }
+enableMobileUI(); addEventListener('resize', enableMobileUI);
+
+// Virtual joystick implementation (simple)
+let touchId = null, joyCenter = null;
+joy.addEventListener('pointerdown', startJoy); joy.addEventListener('pointermove', moveJoy); joy.addEventListener('pointerup', endJoy); joy.addEventListener('pointercancel', endJoy);
+function startJoy(e){ e.preventDefault(); joy.setPointerCapture(e.pointerId); touchId=e.pointerId; const rect = joy.getBoundingClientRect(); joyCenter = {x:rect.left+rect.width/2, y:rect.top+rect.height/2}; updateKnob(e.clientX, e.clientY); }
+function moveJoy(e){ if(e.pointerId!==touchId) return; updateKnob(e.clientX, e.clientY); }
+function endJoy(e){ if(e.pointerId!==touchId) return; touchId = null; knob.style.transform='translate(0px,0px)'; input.left=0; input.forward=0; }
+function updateKnob(cx, cy){ const dx = cx - joyCenter.x, dy = cy - joyCenter.y; const max = 38; const nx = Math.max(-max, Math.min(max, dx)), ny = Math.max(-max, Math.min(max, dy)); knob.style.transform = `translate(${nx}px, ${ny}px)`; // map to input
+  input.left = nx / max; input.forward = -ny / max; }
+
+swingBtn.addEventListener('touchstart', e=>{ e.preventDefault(); input.swing = true; }); swingBtn.addEventListener('touchend', e=>{ input.swing=false; });
+
+// Game state / serve
+let server = player, receiver = ai; let rally = false;
+function serve(from){ shuttle.x = from.x; shuttle.z = from.z + (from.side===1?-40:40); shuttle.y = 160; shuttle.vx = (Math.random()-0.5)*1.5; shuttle.vz = from.side===1?-8:8; shuttle.vy = -5; shuttle.inPlay = true; shuttle.lastHit = null; rally=true; }
+
+// Reset
+document.getElementById('resetBtn').addEventListener('click', ()=>{ player.score = ai.score = 0; updateScore(); resetRally(); serve(player); });
+function updateScore(){ document.getElementById('score').textContent = `Player: ${player.score} — AI: ${ai.score}`; }
+
+// Physics & AI helpers
+const GRAV = -0.6; // tuned for feel
+function physicsStep(dt){ if(!shuttle.inPlay) return; shuttle.vy += GRAV * dt; shuttle.x += shuttle.vx * dt; shuttle.y += shuttle.vy * dt; shuttle.z += shuttle.vz * dt;
+  shuttle.mesh.position.set(shuttle.x, shuttle.y, shuttle.z);
+  // net collision
+  if(Math.abs(shuttle.z) < 6 && shuttle.y < COURT.netH + 6){ // net hit
+    shuttle.inPlay = false; shuttle.lastHit = null; rally=false; point(receiver);
+  }
+  // ground
+  if(shuttle.y < 0){ shuttle.inPlay = false; rally=false; // landed, determine who won
+    const landedSide = (shuttle.z > 0) ? 1 : -1; const winner = (landedSide===player.side)? ai : player; point(winner);
+  }
+  // out of bounds
+  if(Math.abs(shuttle.x) > COURT.w/2 + 40 || Math.abs(shuttle.z) > COURT.d/2 + 40){ shuttle.inPlay = false; rally=false; point(shuttle.lastHit===player?ai:player); }
 }
 
-function draw() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Draw court
-    ctx.drawImage(courtImg, (canvas.width-800)/2, (canvas.height-400)/2, 800, 400);
-
-    // Draw fans
-    ctx.drawImage(fansImg, (canvas.width-800)/2, (canvas.height-400)/2 - 100, 800, 100);
-
-    // Draw racket
-    ctx.drawImage(racketImg, racket.x, racket.y, 60, 120);
-
-    // Draw shuttle
-    ctx.beginPath();
-    ctx.arc(shuttle.x, shuttle.y, shuttle.radius, 0, Math.PI*2);
-    ctx.fillStyle = "white";
-    ctx.fill();
-
-    // Draw score
-    ctx.fillStyle = "black";
-    ctx.font = "24px Arial";
-    ctx.fillText("Score: " + score, 20, 40);
+function point(winner){ winner.score += 1; updateScore(); // winner serves next
+  server = winner; receiver = (winner===player?ai:player);
+  setTimeout(()=>{ resetRally(); serve(server); }, 800);
 }
 
-function loop() {
-    update();
-    draw();
-    requestAnimationFrame(loop);
+function resetRally(){ shuttle.inPlay=false; shuttle.mesh.position.set(0,160,0); shuttle.x=0; shuttle.y=160; shuttle.z=0; shuttle.vx=0; shuttle.vy=0; shuttle.vz=0; }
+
+// Smarter AI: predict landing spot, move to intercept, choose shot
+function predictLanding(x,y,z,vx,vy,vz){ // simple projectile prediction ignoring air resistance
+  // iterate future positions until y<=0 or timeout
+  let px=x, py=y, pz=z, tvx=vx, tvy=vy, tvz=vz; for(let i=0;i<800;i++){ tvy += GRAV; px += tvx; py += tvy; pz += tvz; if(py <= 0) return {x:px,y:py,z:pz,t:i}; }
+  return {x:px,y:py,z:pz,t:800}; }
+
+function aiStep(dt){ // predictive movement
+  // if shuttle not in play, return to default stance
+  const stanceZ = -120;
+  if(!shuttle.inPlay){ // return to center
+    ai.x += (0 - ai.x) * 0.08; ai.z += (stanceZ - ai.z) * 0.06; ai.mesh.position.set(ai.x,0,ai.z); return; }
+  // predict landing
+  const landing = predictLanding(shuttle.x, shuttle.y, shuttle.z, shuttle.vx, shuttle.vy, shuttle.vz);
+  // target to intercept earlier: choose point a little before landing on AI's side
+  let targetX = landing.x; let targetZ = landing.z;
+  // if landing beyond AI side, choose a forward intercept
+  if(landing.z > 0) targetZ = Math.max(landing.z - 120, -COURT.d/2 + 80);
+  // move smoothly towards target
+  const dx = targetX - ai.x, dz = targetZ - ai.z;
+  const dist = Math.hypot(dx,dz);
+  const maxSpeed = 4 + Math.min(6, Math.max(0, 4 * (1 - Math.min(1, Math.abs(shuttle.vz)/25))));
+  if(dist > 2){ ai.x += (dx/dist) * Math.min(maxSpeed, dist) * 0.12 * dt; ai.z += (dz/dist) * Math.min(maxSpeed, dist) * 0.12 * dt; }
+  // decide to swing if close and shuttle descending
+  const dxs = shuttle.x - ai.x, dzs = shuttle.z - ai.z; const clos = Math.hypot(dxs,dzs);
+  if(clos < 90 && shuttle.vz < 0 && shuttle.y < 180 && !ai.swing){ ai.swing = true; ai.swingTimer = 0; }
+  // execute swing timing
+  if(ai.swing){ ai.swingTimer += 1; if(ai.swingTimer > 6){ // perform hit
+    ai.swing = false; ai.swingTimer = 0;
+    // choose shot based on shuttle state: if high and near net -> smash, else lob or drive
+    const towardsPlayer = (Math.random() < 0.5) ? 1 : 0; // randomness
+    const heightFactor = shuttle.y;
+    if(heightFactor > 120 && Math.random() < 0.6){ // smash
+      shuttle.vz = 26; shuttle.vy = -12 + (Math.random()*4); shuttle.vx = (Math.random()-0.5)*4; shuttle.lastHit = ai; }
+    else if(Math.random() < 0.35){ // lob
+      shuttle.vz = 10; shuttle.vy = 14 + Math.random()*6; shuttle.vx = (Math.random()-0.5)*2; shuttle.lastHit = ai; }
+    else { // drive / flat
+      shuttle.vz = 18 + Math.random()*6; shuttle.vy = 6 - Math.random()*4; shuttle.vx = (Math.random()-0.5)*5; shuttle.lastHit = ai; }
+  } }
+  ai.mesh.position.set(ai.x,0,ai.z);
 }
 
-loop();
+// Player update
+function playerStep(dt){ // keyboard or joystick
+  const moveX = ( (keys['a']||keys['arrowleft'])? -1:0) + ((keys['d']||keys['arrowright'])?1:0) + (input.left || 0);
+  const moveZ = ( (keys['w']||keys['arrowup'])? -1:0) + ((keys['s']||keys['arrowdown'])?1:0) + (input.forward || 0);
+  const speed = 6 + Math.max(0, Math.abs(shuttle.vz)*0.05);
+  player.x += moveX * speed * 0.12 * dt; player.z += moveZ * speed * 0.12 * dt;
+  player.x = Math.max(-COURT.w/2+30, Math.min(COURT.w/2-30, player.x)); player.z = Math.max(0, Math.min(COURT.d/2-60, player.z));
+  player.mesh.position.set(player.x,0,player.z);
+  // swing logic: if swing requested, check proximity
+  if(input.swing && !player.swing){ player.swing = true; player.swingTimer = 0; }
+  if(player.swing){ player.swingTimer += 1; if(player.swingTimer > 6){ // attempt hit
+    player.swing = false; player.swingTimer = 0; const dx = shuttle.x - player.x, dz = shuttle.z - player.z, dy = shuttle.y - 40;
+    const dist = Math.hypot(dx,dz,dy);
+    if(dist < 120){ // hit
+      // aim towards opponent with some skill factor
+      const aimX = (Math.random()-0.5)*60; const baseSpeed = 18 + Math.random()*6;
+      shuttle.vx = aimX*0.08 + dx*0.06; shuttle.vz = -baseSpeed; shuttle.vy = Math.max(6, 16 - dy*0.03) + Math.random()*4; shuttle.lastHit = player; shuttle.inPlay = true;
+    }
+  } }
+}
+
+// Animation loop
+let last = performance.now();
+function animate(now){ const dt = Math.min(3, (now - last) / 16.666); last = now;
+  // update player & ai
+  playerStep(dt); aiStep(dt);
+  // physics
+  if(shuttle.inPlay) physicsStep(dt);
+  else shuttle.mesh.position.set(0,160,0);
+  // camera smooth follow
+  camTarget.lerp(new THREE.Vector3((player.x+ai.x)/2, 80, (player.z+ai.z)/2), 0.04);
+  camera.position.lerp(new THREE.Vector3(camTarget.x, camTarget.y+120, camTarget.z+420), 0.04);
+  camera.lookAt(camTarget);
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+
+// initial placement & serve
+player.x = 0; player.z = 160; player.mesh.position.set(player.x,0,player.z);
+ai.x = 0; ai.z = -160; ai.mesh.position.set(ai.x,0,ai.z);
+resetRally(); serve(player);
+requestAnimationFrame(animate);
+
+// handle window resize
+addEventListener('resize', ()=>{ camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+// small helper: make controls visible for touch devices
+(function autoShowControls(){ if(window.innerWidth < 900 || /Mobi|Android/i.test(navigator.userAgent)){ joy.style.display='flex'; swingBtn.style.display='flex'; } else { joy.style.display='none'; swingBtn.style.display='none'; } }());
+
 </script>
 </body>
 </html>
